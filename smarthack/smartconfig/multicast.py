@@ -7,7 +7,7 @@ Encode data for Tuya smartconfig via multicast
 multicast strategy reverse engineered by kueblc
 """
 
-from .crc import crc_32
+from smarthack.util import crc32
 
 from Cryptodome.Cipher import AES
 pad = lambda data, block_size : data + ('\0' * ( (block_size - len(data)) % block_size ) )
@@ -19,7 +19,7 @@ def encode_pw( pw ):
 	pw_bytes = [ ord(c) for c in pw ]
 	encrypted_pw = encrypt(pw)
 	# CRC and length are from plaintext
-	crc = crc_32(pw_bytes)
+	crc = crc32(pw_bytes)
 	# length, twice
 	r.append( len(pw) )
 	r.append( len(pw) )
@@ -32,7 +32,7 @@ def encode_pw( pw ):
 def encode_plain( s ):
 	r = []
 	s_bytes = [ ord(c) for c in s ]
-	crc = crc_32(s_bytes)
+	crc = crc32(s_bytes)
 	# length, twice
 	r.append( len(s) )
 	r.append( len(s) )

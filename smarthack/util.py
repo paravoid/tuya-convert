@@ -5,6 +5,12 @@
 # Copyright (c) 2020 Faidon Liambotis
 # SPDX-License-Identifier: MIT
 
+import binascii
+from typing import (
+    Iterable,
+    Union,
+)
+
 from Cryptodome.Cipher import AES
 
 
@@ -30,3 +36,24 @@ def decrypt(encrypted_data: bytes, key: bytes) -> bytes:
     cipher = AES.new(key, AES.MODE_ECB)
     padded_data = cipher.decrypt(encrypted_data)
     return unpad(padded_data)
+
+
+def crc8(data: Union[bytes, Iterable[int]]) -> int:
+    """Calculate the CRC8 checksum for data.
+
+    The inner loop calculates the CRC8 polynomial x⁸+x⁵+x⁴+1.
+    """
+    crc = 0
+    for byte in data:
+        for _ in range(8):
+            if (crc ^ byte) & 0x01:
+                crc = ((crc ^ 0x18) >> 1) | 0x80
+            else:
+                crc >>= 1
+            byte >>= 1
+    return crc
+
+
+def crc32(data: Union[bytes, Iterable[int]]) -> int:
+    """Temporary wrapper around stdlib's crc32, to avoid code changes at this time."""
+    return binascii.crc32(bytearray(data))

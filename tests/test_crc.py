@@ -11,7 +11,7 @@ from typing import (
     Union,
 )
 
-from smarthack.smartconfig.crc import crc_32, crc_8  # type: ignore
+from smarthack.util import crc32, crc8
 
 
 PRECOMPUTED: Sequence[Tuple[Union[bytes, List[int]], int, str]] = [
@@ -36,7 +36,7 @@ PRECOMPUTED: Sequence[Tuple[Union[bytes, List[int]], int, str]] = [
 def test_crc8() -> None:
     """Test the CRC-8 method against a set of precomputed values."""
     for data, checksum8, _ in PRECOMPUTED:
-        assert crc_8(data) == checksum8
+        assert crc8(data) == checksum8
 
 
 def test_crc32() -> None:
@@ -44,5 +44,5 @@ def test_crc32() -> None:
     for data, _, checksum32 in PRECOMPUTED:
         # this is a weird way of packing to little-endian, but this is how it's
         # currently being used in the callsites in the tree
-        crc = [(crc_32(data) >> i) & 255 for i in range(0, 32, 8)]
+        crc = [(crc32(data) >> i) & 255 for i in range(0, 32, 8)]
         assert bytearray(crc).hex() == checksum32

@@ -1,52 +1,95 @@
 #!/usr/bin/env python3
-# encoding: utf-8
-"""
-Created by kueblc on 2019-11-13.
-Discover Tuya devices on the LAN via UDP broadcast
-"""
+"""Discover Tuya devices on the LAN via UDP broadcast."""
+
+# Copyright (c) 2019-2020 Colin Kuebler
+# Copyright (c) 2020 Faidon Liambotis
+# SPDX-License-Identifier: MIT
 
 import asyncio
+import hashlib
 import json
+import logging
+from typing import Tuple
 
-from Cryptodome.Cipher import AES
-pad = lambda s: s + (16 - len(s) % 16) * chr(16 - len(s) % 16)
-unpad = lambda s: s[:-ord(s[len(s) - 1:])]
-encrypt = lambda msg, key: AES.new(key.encode(), AES.MODE_ECB).encrypt(pad(msg).encode())
-decrypt = lambda msg, key: unpad(AES.new(key.encode(), AES.MODE_ECB).decrypt(msg.encode()))
+from smarthack.util import decrypt
 
-from hashlib import md5
-udpkey = md5(b"yGAdlopoPVldABfn").digest()
-decrypt_udp = lambda msg: decrypt(msg, udpkey)
+MAGIC_KEY = b"yGAdlopoPVldABfn"
+PORT = 6666
+ENC_PORT = 6667
+
+logger = logging.getLogger("smarthack-discovery")  # pylint: disable=invalid-name
+
 
 class TuyaDiscovery(asyncio.DatagramProtocol):
-	def datagram_received(self, data, addr):
-		# remove message frame
-		data = data[20:-8]
-		# decrypt if encrypted
-		try:
-			data = decrypt_udp(data)
-		except:
-			pass
-		# parse json
-		try:
-			data = json.loads(data)
-		except:
-			pass
-		print(addr[0], data)
+    """Receive and decode Tuya UDP broadcasts, and log about them."""
 
-def main():
-	loop = asyncio.get_event_loop()
-	listener = loop.create_datagram_endpoint(TuyaDiscovery, local_addr=('0.0.0.0', 6666))
-	encrypted_listener = loop.create_datagram_endpoint(TuyaDiscovery, local_addr=('0.0.0.0', 6667))
-	loop.run_until_complete(listener)
-	print("Listening for Tuya broadcast on UDP 6666")
-	loop.run_until_complete(encrypted_listener)
-	print("Listening for encrypted Tuya broadcast on UDP 6667")
-	try:
-		loop.run_forever()
-	except KeyboardInterrupt:
-		loop.stop()
+    def datagram_received(self, data: bytes, addr: Tuple[str, int]):  # type: ignore
+        """Receive a datagram and do all the work."""
+        data = data[20:-8]  # remove message frame
+
+        try:
+            datadict = json.loads(data)
+        except json.JSONDecodeError:
+            logger.error("Device[%s]: could not parse %s", addr[0], data)
+        except Exception:  # pylint: disable=broad-except
+            logger.exception("Device[%s]: could not parse %s", addr[0], data)
+        else:
+            logger.info(
+                "Device[%s]: broadcast; product key %s, version %s",
+                addr[0],
+                datadict["productKey"],
+                datadict["version"],
+            )
+            for key, value in datadict.items():
+                logger.debug("Device[%s]: %s=%s", addr[0], key, value)
+
+
+class TuyaEncryptedDiscovery(TuyaDiscovery):
+    """Receive and decode Tuya Encrypted UDP broadcasts, and log about them."""
+
+    udpkey = hashlib.md5(MAGIC_KEY).digest()
+
+    def datagram_received(self, data: bytes, addr: Tuple[str, int]):  # type: ignore
+        """Receive a datagram and do all the work."""
+        head, body, tail = data[:20], data[20:-8], data[-8:]
+
+        try:
+            decrypted_body = decrypt(body, self.udpkey)
+            logger.debug("Device[%s]: successfully decrypted data")
+        except (ValueError, TypeError):
+            logger.error("Device[%s]: could not decrypt %s", addr[0], body)
+        except Exception:  # pylint: disable=broad-except
+            logger.exception("Device[%s]: could not decrypt %s", addr[0], body)
+        else:
+            # readd head/tail and pass on to parent class
+            data = head + decrypted_body + tail
+            super().datagram_received(data, addr)
+
+
+def main() -> None:
+    """Entry point for CLI users."""
+    logging.basicConfig(
+        format="%(asctime)-15s %(name)s %(levelname)-8s %(message)s",
+        level=logging.INFO,
+    )
+
+    loop = asyncio.get_event_loop()
+    listener = loop.create_datagram_endpoint(
+        TuyaDiscovery, local_addr=("0.0.0.0", PORT)
+    )
+    encrypted_listener = loop.create_datagram_endpoint(
+        TuyaEncryptedDiscovery, local_addr=("0.0.0.0", ENC_PORT)
+    )
+    loop.run_until_complete(listener)
+    logger.info("Listening for Tuya broadcast on UDP %s", PORT)
+    loop.run_until_complete(encrypted_listener)
+    logger.info("Listening for encrypted Tuya broadcast on UDP %s", ENC_PORT)
+
+    try:
+        loop.run_forever()
+    except KeyboardInterrupt:
+        loop.stop()
+
 
 if __name__ == "__main__":
-	main()
-
+    main()

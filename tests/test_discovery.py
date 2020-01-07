@@ -5,11 +5,10 @@
 # SPDX-License-Identifier: MIT
 
 import json
+import logging
 from typing import Any
 
-import pytest  # type: ignore
-
-from smarthack.discovery import TuyaDiscovery
+from smarthack.discovery import TuyaDiscovery, TuyaEncryptedDiscovery
 
 DUMMY_DATA = {
     "ip": "10.42.42.14",
@@ -34,32 +33,35 @@ ENCRYPTED_DUMMY_JSON = bytes.fromhex(
 )
 
 
-def test_discovery_cleartext(capsys: Any) -> None:
+def test_discovery_cleartext(caplog: Any) -> None:
     """Test the receipt of cleartext discovery packets."""
+    caplog.set_level(logging.INFO)
     addr = ("127.0.0.1", 65535)
-    packet = "0" * 20 + DUMMY_JSON + "0" * 8
+    packet = b"0" * 20 + DUMMY_JSON.encode() + b"0" * 8
+
     TuyaDiscovery().datagram_received(packet, addr)
-
-    captured = capsys.readouterr()
-    assert captured.out == (addr[0] + " " + str(DUMMY_DATA) + "\n")
+    assert "product key RN2FVAgXG6WfAktU" in caplog.text
 
 
-@pytest.mark.xfail(reason="encrypted discovery is broken")  # type: ignore
-def test_discovery_encrypted(capsys: Any) -> None:
+def test_discovery_encrypted(caplog: Any) -> None:
     """Test the receipt of encrypted discovery packets."""
+    caplog.set_level(logging.INFO)
     addr = ("127.0.0.1", 65535)
     packet = b"0" * 20 + ENCRYPTED_DUMMY_JSON + b"0" * 8
-    TuyaDiscovery().datagram_received(packet, addr)
 
-    captured = capsys.readouterr()
-    assert captured.out == (addr[0] + " " + str(DUMMY_DATA) + "\n")
+    TuyaEncryptedDiscovery().datagram_received(packet, addr)
+    assert "product key RN2FVAgXG6WfAktU" in caplog.text
 
 
-@pytest.mark.xfail(reason="code ignores all errors")  # type: ignore
-def test_discovery_invalid(capsys: Any) -> None:
+def test_discovery_invalid(caplog: Any) -> None:
     """Test the receipt of invalid discovery packets."""
+    caplog.set_level(logging.INFO)
+
     addr = ("127.0.0.1", 65535)
     for packet in [b"", b"\x80", b"0" * 28, b"0" * 20 + b"garbage" + b"0" * 8]:
+        caplog.clear()
         TuyaDiscovery().datagram_received(packet, addr)
-        captured = capsys.readouterr()
-        assert captured.out != (addr[0] + " \n")
+        assert "could not parse" in caplog.text
+        caplog.clear()
+        TuyaEncryptedDiscovery().datagram_received(packet, addr)
+        assert "could not decrypt" in caplog.text

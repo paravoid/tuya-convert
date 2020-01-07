@@ -8,22 +8,18 @@ import datetime
 import time
 from typing import Any
 
-import paho.mqtt.publish  # type: ignore
-
-import pytest  # type: ignore
-
-from smarthack.mqtt import iot_dec, iot_enc, main  # type: ignore
+from smarthack.mqtt import prepare_message, wire_format, wire_unformat
 
 
 FIXED_TIME = datetime.datetime(2020, 1, 1, 0, 0, 0, 0, datetime.timezone.utc)
-KEY = "k" * 16  # random key
+KEY = b"k" * 16  # random key
 PRECOMPUTED_21 = (
-    ("", b"2.1f60982e36ae45003ET+owGzMcMRnHMCdHyZ81Q=="),
-    ("foobar", b"2.14fe6da8264c3ffb2+C3QVjwIa4QPbzfpz7qFGw=="),
+    (b"", b"2.1f60982e36ae45003ET+owGzMcMRnHMCdHyZ81Q=="),
+    (b"foobar", b"2.14fe6da8264c3ffb2+C3QVjwIa4QPbzfpz7qFGw=="),
 )
 PRECOMPUTED_22 = (
-    ("", b"2.2\x8cH\xf6\xc983680000\x11?\xa8\xc0l\xccp\xc4g\x1c\xc0\x9d\x1f&|\xd5"),
-    ("foobar", b"2.2(\xb6hg83680000\xf8-\xd0V<\x08k\x84\x0fo7\xe9\xcf\xba\x85\x1b"),
+    (b"", b"2.2\x8cH\xf6\xc983680000\x11?\xa8\xc0l\xccp\xc4g\x1c\xc0\x9d\x1f&|\xd5"),
+    (b"foobar", b"2.2(\xb6hg83680000\xf8-\xd0V<\x08k\x84\x0fo7\xe9\xcf\xba\x85\x1b"),
 )
 # pylint: disable=bad-continuation
 PRECOMPUTED_MESSAGE = {
@@ -39,41 +35,30 @@ PRECOMPUTED_MESSAGE = {
 
 
 def test_wire_format_v21() -> None:
-    """Test the iot_enc() method against a set of precomputed values (v2.1)."""
+    """Test the wire_format() method against a set of precomputed values (v2.1)."""
     for clear, encoded in PRECOMPUTED_21:
-        assert iot_enc(clear, KEY, "2.1") == encoded
+        assert wire_format(clear, KEY, "2.1") == encoded
 
 
 def test_wire_format_v22(monkeypatch: Any) -> None:
-    """Test the iot_enc() method against a set of precomputed values (v2.2)."""
+    """Test the wire_format() method against a set of precomputed values (v2.2)."""
     with monkeypatch.context() as mpatch:
         mpatch.setattr(time, "time", FIXED_TIME.timestamp)
         for clear, encoded in PRECOMPUTED_22:
-            assert iot_enc(clear, KEY, "2.2") == encoded
+            assert wire_format(clear, KEY, "2.2") == encoded
 
 
-@pytest.mark.xfail(reason="currently broken due to str/bytes bugs")  # type: ignore
 def test_wire_unformat() -> None:
-    """Test the iot_dec() method against a set of precomputed values."""
+    """Test the wire_unformat() method against a set of precomputed values."""
     for clear, encoded in PRECOMPUTED_21:
-        assert iot_dec(encoded, KEY) == clear
+        assert wire_unformat(encoded, KEY) == clear
 
 
-def test_prepared_message(monkeypatch: Any, capsys: Any) -> None:
-    """Test the prepared message against a set of precomputed values."""
+def test_prepared_message(monkeypatch: Any) -> None:
+    """Test the prepare_message() method against a set of precomputed values."""
     device_id = "0123456789"
     local_key = "abcdefghijklmnop"
-
-    # ugly hack: mock paho's publish, and call main(), as that's the only way
-    # right now we can get the prepared (JSON-formatted/encrypted) message
-    # pylint: disable=unused-argument
-    def fake_single(topic: str, payload: bytes, hostname: str) -> None:
-        pass
-
     with monkeypatch.context() as mpatch:
         mpatch.setattr(time, "time", FIXED_TIME.timestamp)
-        mpatch.setattr(paho.mqtt.publish, "single", fake_single)
         for protocol, message in PRECOMPUTED_MESSAGE.items():
-            main(["mqtt", "-i", device_id, "-l", local_key, "-p", protocol])
-            captured = capsys.readouterr()
-            assert captured.out.splitlines()[1] == repr(message)
+            assert prepare_message(device_id, local_key, protocol) == message

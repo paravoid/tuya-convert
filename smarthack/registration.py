@@ -162,8 +162,8 @@ class JSONHandler(tornado.web.RequestHandler):
 			self.reply(answer)
 			print("TRIGGER UPGRADE IN 10 SECONDS")
 			protocol = "2.2" if encrypted else "2.1"
-			mqttbin = os.path.dirname(os.path.abspath(__file__)) + "/" + "mqtt.py"
-			os.system("sleep 10 && %s -i %s -p %s &" % (mqttbin, gwId, protocol))
+			os.putenv("PYTHONPATH", os.path.dirname(os.path.abspath(__file__)) + "/..")
+			os.system("sleep 10 && python3 -m smarthack.mqtt -i %s -p %s &" % (gwId, protocol))
 
 		# Upgrade endpoints
 		elif(".updatestatus" in a):

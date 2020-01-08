@@ -22,11 +22,12 @@ setup () {
 	done
 	echo
 	sleep 5
-	echo "  Starting web server in a screen"
-	$screen_with_log smarthack-web.log -S smarthack-web -m -d ../smarthack/registration.py
 	echo "  Starting Mosquitto in a screen"
 	$screen_with_log smarthack-mqtt.log -S smarthack-mqtt -m -d mosquitto -v
 	popd >/dev/null || exit
+	echo "  Starting web server in a screen"
+	$screen_with_log scripts/smarthack-web.log -S smarthack-web -m -d python3 -m smarthack.registration \
+			--address "${GATEWAY}"
 	echo "  Starting PSK frontend in a screen"
 	$screen_with_log scripts/smarthack-psk.log -S smarthack-psk -m -d python3 -m smarthack.pskproxy \
 			"${GATEWAY}:8886:${GATEWAY}:1883" \

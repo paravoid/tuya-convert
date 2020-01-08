@@ -15,7 +15,7 @@ import tornado.web
 from tornado.httpclient import AsyncHTTPClient, HTTPError
 from tornado.httputil import url_concat
 
-import smarthack.registration
+from smarthack import registration
 
 
 # pylint: disable=bad-continuation
@@ -24,15 +24,8 @@ import smarthack.registration
 @pytest.fixture  # type: ignore
 def app() -> tornado.web.Application:
     """Return the Tornado application that is about to be tested."""
-    # this should be factored out in the registration module, and kept there
-    return tornado.web.Application(
-        [
-            (r"/", smarthack.registration.MainHandler),
-            (r"/gw.json", smarthack.registration.JSONHandler),
-            ("/files/(.*)", smarthack.registration.FilesHandler, {"path": "files/"}),
-            (r".*", tornado.web.RedirectHandler, {"url": "/", "permanent": False}),
-        ],
-    )
+    options = registration.parse_args([])
+    return registration.make_app(vars(options))
 
 
 @pytest.mark.gen_test  # type: ignore
@@ -48,10 +41,19 @@ def test_file_status(tmp_path: Any) -> None:
         "hmac": "2B449DB915DBD53F9DEC67A17CBB7583B73CA3939DB73DED1B6FB465C3E04DB7",
     }
 
-    smarthack.registration.get_file_stats(canary)  # updates the globals, does not get
     for algorithm, precomputed in hashes.items():
-        calculated = getattr(smarthack.registration, "file_%s" % algorithm)
+        key = "0000000000000000" if algorithm == "hmac" else None
+        calculated = registration.file_hash(canary, algorithm, key)
         assert calculated == precomputed
+
+    with pytest.raises(ValueError):
+        registration.file_hash(canary, "garbage")
+
+    with pytest.raises(ValueError):
+        registration.file_hash(canary, "hmac")
+
+    with pytest.raises(ValueError):
+        registration.file_hash(canary, "hmac", None)
 
 
 @pytest.mark.gen_test  # type: ignore
@@ -68,6 +70,10 @@ async def test_files(http_client: AsyncHTTPClient, base_url: str) -> None:
     with pytest.raises(HTTPError) as exc:
         await http_client.fetch(base_url + "/files", follow_redirects=False)
     assert "302" in str(exc.value)  # redirect
+
+    with pytest.raises(HTTPError) as exc:
+        await http_client.fetch(base_url + "/files/", follow_redirects=False)
+    assert "404" in str(exc.value)  # index.html
 
 
 # These are real request data, grabbed from a Tuya firmware running a v3.0
@@ -138,7 +144,6 @@ async def test_gw_dev_pk_active(
     assert response.code == 200
 
 
-@pytest.mark.xfail(reason="encrypted payloads are (silently) ignored")  # type: ignore
 @pytest.mark.gen_test  # type: ignore
 async def test_dynamic_config_get(http_client: AsyncHTTPClient, base_url: str) -> None:
     """Test the tuya.device.dynamic.config.get gw.json action."""
@@ -257,7 +262,10 @@ async def test_device_upgrade(
         "v": "4.3",
         "sign": "be1b0b26925d66cae35e349d14a97436",
     }
-    request_body = "data=" + '{"type":0}'
+    if encrypted:
+        request_body = "data=" + '{"type":0}'
+    else:
+        request_body = "data=" + "7FD8D29837442AC49BCA31D731D7B883"  # '{"type":0}'
     url = url_concat(base_url + "/gw.json", query_params)
     response = await http_client.fetch(url, method="POST", body=request_body)
     assert response.code == 200
@@ -313,3 +321,64 @@ async def test_timer_count(http_client: AsyncHTTPClient, base_url: str) -> None:
     url = url_concat(base_url + "/gw.json", query_params)
     response = await http_client.fetch(url, method="POST", body=request_body)
     assert response.code == 200
+
+
+@pytest.mark.gen_test  # type: ignore
+async def test_non_esp82xx(
+    http_client: AsyncHTTPClient, base_url: str, caplog: Any
+) -> None:
+    """Test a URL from a non-ESP8266 device.
+
+    This is a log from #273 for the full log.
+    """
+    query_params = {
+        "a": "tuya.device.config.get",
+        "et": "1",
+        "other": '{"token":"00000000","region":"US"}',
+        "t": "1546300819",
+        "uuid": "50cdeb970f72cf4b",
+        "v": "4.1",
+        "sign": "ac53558b1877931d07a0e8f9a1bfe0b8",
+    }
+    request_body = ""
+    url = url_concat(base_url + "/d.json", query_params)
+    response = await http_client.fetch(url, method="POST", body=request_body)
+    assert response.code == 200
+
+    assert "does not use an ESP82xx" in caplog.text
+
+
+@pytest.mark.gen_test  # type: ignore
+@pytest.mark.parametrize("encrypted", (True, False))  # type: ignore
+async def test_garbage(
+    http_client: AsyncHTTPClient, base_url: str, encrypted: bool, caplog: Any
+) -> None:
+    """Test a seemingly valid URL but with garbage data."""
+    query_params = {
+        "a": "tuya.device.dynamic.config.get",
+        "et": "1" if encrypted else "0",
+        "gwId": "0" * 20,
+        "t": "1",
+        "v": "1.0",
+        "sign": "0" * 32,
+    }
+    url = url_concat(base_url + "/d.json", query_params)
+
+    # multiple layers to unwrap
+    # first, try with something that's clearly neither a JSON, nor decodes as hex
+    caplog.clear()
+    request_body = "data=" + "garbage"
+    await http_client.fetch(url, method="POST", body=request_body)
+    assert "Could not parse" in caplog.text
+
+    # then, something that's in hex, but "garbage" inside (un-encryptable)
+    caplog.clear()
+    request_body = "data=" + b"garbage".hex()
+    await http_client.fetch(url, method="POST", body=request_body)
+    assert "Could not decrypt" in caplog.text
+
+    # then something that's in hex and encrypted, but not a valid JSON
+    caplog.clear()
+    request_body = "data=" + "2B7C233F1CBAC21A299650F9E7780DAF"  # "garbage" encrypted
+    await http_client.fetch(url, method="POST", body=request_body)
+    assert "Could not parse" in caplog.text

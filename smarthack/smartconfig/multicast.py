@@ -1,65 +1,75 @@
 #!/usr/bin/env python3
-# encoding: utf-8
-"""
-multicast.py
-Created by kueblc on 2019-01-25.
-Encode data for Tuya smartconfig via multicast
-multicast strategy reverse engineered by kueblc
-"""
+"""Encode data for Tuya smartconfig via multicast."""
 
-from smarthack.util import crc32
+# Created by kueblc on 2019-01-25.
+# Multicast strategy reverse engineered by kueblc
+
+# Copyright (c) 2019-2020 Colin Kuebler
+# Copyright (c) 2020 Faidon Liambotis
+# SPDX-License-Identifier: MIT
+
+import binascii
+from typing import List
 
 from Cryptodome.Cipher import AES
-pad = lambda data, block_size : data + ('\0' * ( (block_size - len(data)) % block_size ) )
-aes = AES.new( b'a3c6794oiu876t54', AES.MODE_ECB )
-encrypt = lambda data : aes.encrypt( pad(data, 16).encode() )
 
-def encode_pw( pw ):
-	r = []
-	pw_bytes = [ ord(c) for c in pw ]
-	encrypted_pw = encrypt(pw)
-	# CRC and length are from plaintext
-	crc = crc32(pw_bytes)
-	# length, twice
-	r.append( len(pw) )
-	r.append( len(pw) )
-	# encode CRC as LE
-	r.extend([ (crc >> i) & 255 for i in range(0,32,8) ])
-	# payload, AES encrypted
-	r.extend( encrypted_pw )
-	return r
+MAGIC_AES_KEY = b"a3c6794oiu876t54"
 
-def encode_plain( s ):
-	r = []
-	s_bytes = [ ord(c) for c in s ]
-	crc = crc32(s_bytes)
-	# length, twice
-	r.append( len(s) )
-	r.append( len(s) )
-	# encode CRC as LE
-	r.extend([ (crc >> i) & 255 for i in range(0,32,8) ])
-	# payload, plaintext
-	r.extend( s_bytes )
-	return r
 
-def bytes_to_ips( data, sequence ):
-	r = []
-	if len(data) & 1:
-		data.append(0)
-	for i in range(0, len(data), 2):
-		r.append( "226." + str(sequence) + "." + str(data[i+1]) + "." + str(data[i]) )
-		sequence += 1
-	return r
+def frame(data: bytes, encrypt: bool = False) -> bytearray:
+    """Frame (and possibly encrypt) a payload; include a checksum."""
+    output = bytearray()
+    crc = binascii.crc32(data)
 
-multicast_head = bytes_to_ips([ ord(c) for c in "TYST01" ], 120)
+    # length, twice
+    output.append(len(data))
+    output.append(len(data))
 
-def encode_multicast_body( password, ssid, token_group ):
-	r = []
-	ssid_encoded = encode_plain(ssid)
-	r.extend( bytes_to_ips( ssid_encoded, 64 ) )
-	password_encoded = encode_pw(password)
-	r.extend( bytes_to_ips( password_encoded, 0 ) )
-	token_group_encoded = encode_plain(token_group)
-	r.extend( bytes_to_ips( token_group_encoded, 32 ) )
-	return r
+    # CRC, as little-endian
+    output.extend(crc.to_bytes(4, "little"))
 
+    if not encrypt:
+        # payload, plaintext
+        output.extend(data)
+    else:
+        # payload, AES encrypted
+        padded_data = data + b"\0" * ((16 - len(data)) % 16)
+        cipher = AES.new(MAGIC_AES_KEY, AES.MODE_ECB)
+        encrypted_pw = cipher.encrypt(padded_data)
+        output.extend(encrypted_pw)
+    return output
+
+
+def bytes_to_ips(data: bytearray, sequence: int) -> List[str]:
+    """Encode a little-endian bytearray into a list of multicast IPv4 addresses."""
+    output = []
+    if len(data) & 1:
+        data.append(0)
+
+    # split data into segments of 2-byte characters
+    for i in range(0, len(data), 2):
+        output.append(
+            "226." + str(sequence) + "." + str(data[i + 1]) + "." + str(data[i])
+        )
+        sequence += 1
+
+    return output
+
+
+def encode_network(password: str, ssid: str, token_group: str) -> List[str]:
+    """Encode data for the specified network, and return to a list of IPv4 addresses."""
+    output = []
+
+    ssid_encoded = frame(ssid.encode())
+    output.extend(bytes_to_ips(ssid_encoded, 64))
+
+    password_encoded = frame(password.encode(), encrypt=True)
+    output.extend(bytes_to_ips(password_encoded, 0))
+
+    token_group_encoded = frame(token_group.encode())
+    output.extend(bytes_to_ips(token_group_encoded, 32))
+
+    return output
+
+
+HEAD = bytes_to_ips(bytearray(b"TYST01"), 120)

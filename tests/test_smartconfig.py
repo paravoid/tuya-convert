@@ -9,8 +9,8 @@ from smarthack.smartconfig import broadcast, multicast
 
 def test_broadcast() -> None:
     """Test the SmartConfig broadcast message generation."""
-    assert broadcast.broadcast_head == [1, 3, 6, 10]
-    assert broadcast.encode_broadcast_body("password", "ssid", "token_group") == [
+    assert broadcast.HEAD == [1, 3, 6, 10]
+    assert broadcast.encode_network("password", "ssid", "token_group") == [
         17,
         41,
         48,
@@ -60,12 +60,12 @@ def test_broadcast() -> None:
 
 def test_multicast() -> None:
     """Test the SmartConfig multicast message generation."""
-    assert multicast.multicast_head == [
+    assert multicast.HEAD == [
         "226.120.89.84",
         "226.121.84.83",
         "226.122.49.48",
     ]
-    assert multicast.encode_multicast_body("password", "ssid", "token_group") == [
+    assert multicast.encode_network("password", "ssid", "token_group") == [
         "226.64.4.4",
         "226.65.115.200",
         "226.66.240.153",

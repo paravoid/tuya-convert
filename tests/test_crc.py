@@ -4,32 +4,23 @@
 # Copyright (c) 2020 Faidon Liambotis
 # SPDX-License-Identifier: MIT
 
+from binascii import crc32
 from typing import (
-    List,
     Sequence,
     Tuple,
-    Union,
 )
 
-from smarthack.util import crc32, crc8
+from smarthack.util import crc8
 
 
-PRECOMPUTED: Sequence[Tuple[Union[bytes, List[int]], int, str]] = [
+PRECOMPUTED: Sequence[Tuple[bytes, int, str]] = [
     # (<data>, <crc8>, <crc32>)
-    # first, in byte strings
     (b"", 0, "00000000"),
     (b"\x00", 0, "8def02d2"),
     (b"0", 190, "21dfdbf4"),
     (b"\x80", 140, "ad6cba3f"),
     (b"foobar", 53, "951ff69e"),
     (b"foobar" * 1024, 72, "e65db3fd"),
-    # the exact equivalent, in arrays of ints
-    ([], 0, "00000000"),
-    ([0], 0, "8def02d2"),
-    ([48], 190, "21dfdbf4"),
-    ([128], 140, "ad6cba3f"),
-    ([102, 111, 111, 98, 97, 114], 53, "951ff69e"),
-    ([102, 111, 111, 98, 97, 114] * 1024, 72, "e65db3fd"),
 ]
 
 

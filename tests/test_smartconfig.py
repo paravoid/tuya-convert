@@ -5,6 +5,7 @@
 # SPDX-License-Identifier: MIT
 
 from smarthack.smartconfig import broadcast, multicast
+from smarthack.smartconfig.smartconfig import parse_args
 
 
 def test_broadcast() -> None:
@@ -92,3 +93,19 @@ def test_multicast() -> None:
         "226.39.117.111",
         "226.40.0.112",
     ]
+
+
+def test_parse_args() -> None:
+    """Test the parsing of command-line arguments."""
+    bind_address = "127.0.1.0"
+    options = ("ssid", "password", "region", "token", "secret")
+
+    args = ["--bind", bind_address]
+    for option in options:
+        args.append(f"--{option}")
+        args.append(option)
+
+    parsed_options = parse_args(args)
+    assert getattr(parsed_options, "bind_address") == bind_address
+    for option in options:
+        assert getattr(parsed_options, option) == option

@@ -65,7 +65,7 @@ while true; do
 	echo "======================================================"
 
 	echo "Starting smart config pairing procedure"
-	PYTHONPATH=.. python3 -m smarthack.smartconfig.main
+	PYTHONPATH=.. python3 -m smarthack.smartconfig.smartconfig --bind "$GATEWAY"
 
 	echo "Waiting for the device to install the intermediate firmware"
 
@@ -76,7 +76,7 @@ while true; do
 			echo
 			echo "Device did not appear with the intermediate firmware"
 			echo "Check the *.log files in the scripts folder"
-			pkill -f smarthack.smartconfig.main && echo "Stopping smart config"
+			pkill -f smarthack.smartconfig.smartconfig && echo "Stopping smart config"
 			read -p "Do you want to try flashing another device? [y/N] " -n 1 -r
 			echo
 			[[ "$REPLY" =~ ^[Yy]$ ]] || break 2
@@ -87,7 +87,7 @@ while true; do
 	echo
 	echo "IoT-device is online with ip 10.42.42.42"
 
-	pkill -f smarthack.smartconfig.main && echo "Stopping smart config"
+	pkill -f smarthack.smartconfig.smartconfig && echo "Stopping smart config"
 
 	echo "Fetching firmware backup"
 	sleep 2

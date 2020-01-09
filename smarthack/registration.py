@@ -142,7 +142,7 @@ class JSONHandler(tornado.web.RequestHandler):
 				answer["mediaMqttsUrl"] = options.addr
 				answer["aispeech"] = options.addr
 			self.reply(answer)
-			os.system("pkill -f smarthack.smartconfig.main")
+			os.system("pkill -f smarthack.smartconfig.smartconfig")
 
 		elif(".active" in a):
 			print("Answer s.gw.dev.pk.active")

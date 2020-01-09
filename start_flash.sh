@@ -26,9 +26,11 @@ setup () {
 	$screen_with_log smarthack-web.log -S smarthack-web -m -d ../smarthack/registration.py
 	echo "  Starting Mosquitto in a screen"
 	$screen_with_log smarthack-mqtt.log -S smarthack-mqtt -m -d mosquitto -v
-	echo "  Starting PSK frontend in a screen"
-	$screen_with_log smarthack-psk.log -S smarthack-psk -m -d ../smarthack/pskproxy.py -v
 	popd >/dev/null || exit
+	echo "  Starting PSK frontend in a screen"
+	$screen_with_log scripts/smarthack-psk.log -S smarthack-psk -m -d python3 -m smarthack.pskproxy \
+			"${GATEWAY}:8886:${GATEWAY}:1883" \
+			"${GATEWAY}:443:${GATEWAY}:80"
 	echo "  Starting Tuya Discovery in a screen"
 	$screen_with_log scripts/smarthack-udp.log -S smarthack-udp -m -d python3 -m smarthack.discovery
 	echo

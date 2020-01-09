@@ -6,11 +6,10 @@
 
 import pytest  # type: ignore
 
-from smarthack.pskproxy import IDENTITY_PREFIX, gen_psk
+from smarthack.pskproxy import DEFAULT_HINT, IDENTITY_PREFIX, gen_psk, parse_args
 
 
 PREFIX = b"\x01" + IDENTITY_PREFIX
-HINT = b"1dHRsc2NjbHltbGx3eWh5" b"0000000000000000"  # taken from the code being tested
 PRECOMPUTED = (
     ("", "310ab75a8d067ccea734482eb07adf04"),
     ("00" * 16, "3100cad5df5a8f719407b55e0ff55e883c53ab665efe02bd1bb93d7eda9e15e2"),
@@ -26,7 +25,18 @@ def test_gen_psk() -> None:
     """Test the gen_psk() method against precomputed data."""
     for clear, encrypted in PRECOMPUTED:
         identity = PREFIX + bytes.fromhex(clear)
-        assert gen_psk(identity, HINT).hex() == encrypted
+        assert gen_psk(identity, DEFAULT_HINT).hex() == encrypted
 
     with pytest.raises(ValueError):
-        assert gen_psk(b"not 16 chars", HINT)
+        assert gen_psk(b"not 16 chars", DEFAULT_HINT)
+
+
+def test_parse_args() -> None:
+    """Test the parsing of command-line arguments."""
+    args = ["10.42.42.1:8886:10.42.42.1:1883", "10.42.42.1:443:10.42.42.1:80"]
+    options = parse_args(args)
+
+    assert options.listen_pairs == [
+        ("10.42.42.1", "8886", "10.42.42.1", "1883"),
+        ("10.42.42.1", "443", "10.42.42.1", "80"),
+    ]
